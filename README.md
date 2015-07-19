@@ -1,3 +1,3 @@
 # LeetCode
 
-This is my exercise for LeetCode.
+# This is my exercise for LeetCode.

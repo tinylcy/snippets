@@ -19,8 +19,8 @@
 /*
  * 我的思路是做如下转化，用一个二维数组存储
  *
- *  P   A   H   N     P    A   H   N
- *  A P L S I I G =>   A  P L S I I G
+ *  P   A   H   N      P   A   H   N
+ *  A P L S I I G =>    A P L S I I G
  *  Y   I   R            Y   I   R
  *
  * 这样，只需要转化出这样的序列就可以解决问题（假设numRows=3）：

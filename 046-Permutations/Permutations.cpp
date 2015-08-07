@@ -17,7 +17,7 @@ public:
     vector<vector<int> > result;
     vector<bool> visited;
 
-    void DFS(vector<int> &nums,vector<int> &current,vector<bool> visited){
+    void DFS(vector<int> &nums,vector<int> &current,vector<bool> &visited){
         if(current.size()==nums.size()){
             result.push_back(current);
             return;

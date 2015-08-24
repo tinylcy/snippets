@@ -15,7 +15,7 @@ word = "ABCCED", -> returns true,
 word = "SEE", -> returns true,
 word = "ABCB", -> returns false.  */
 
-/*思想：DFS，是已经遍历过的序列，current_x和current_y标记当前坐标，visited用来标记点是否被访问过*/
+/*思想：DFS，是已经遍历过的序列，current_x和current_y标记当前坐标，visited用来标记点是否被访问过，AC*/
 
 #include <iostream>
 #include <vector>

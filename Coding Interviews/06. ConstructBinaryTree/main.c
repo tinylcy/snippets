@@ -21,6 +21,7 @@ int main(void) {
 	printf("\n");
 	postOrderTraverse(root);
 
+	return 0;
 }
 
 struct BinaryTreeNode* construct(int *startPreOrder, int *endPreOrder, int *startInOrder, int *endInOrder) {
@@ -46,7 +47,7 @@ struct BinaryTreeNode* construct(int *startPreOrder, int *endPreOrder, int *star
 	}
 
 	// 注意要判断左右子树是否存在
-	if(leftLength > 0){
+	if(leftLength > 0) {
 		root->left = construct(startPreOrder + 1, startPreOrder + leftLength, startInOrder, inOrderPtr - 1);
 	}
 	if(endInOrder - inOrderPtr > 0) { 

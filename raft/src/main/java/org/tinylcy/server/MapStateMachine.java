@@ -1,4 +1,4 @@
-package org.tinylcy;
+package org.tinylcy.server;
 
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;

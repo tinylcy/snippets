@@ -1,4 +1,4 @@
-package org.tinylcy;
+package org.tinylcy.server;
 
 import io.atomix.copycat.Query;
 

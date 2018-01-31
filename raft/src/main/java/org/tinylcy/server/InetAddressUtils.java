@@ -1,4 +1,4 @@
-package org.tinylcy;
+package org.tinylcy.server;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;

@@ -4,10 +4,8 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	// "crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"log"
 )
@@ -56,46 +54,18 @@ vAohlGrLXWPCwzSPY7GIWdsni7wDb9Sfvef/k5pKsoAn8CgU2olQ
 
 var origindata = []byte("I am tinylcy.")
 
-//
-// 假设数据并不需要加密传输，只需要通过数字签名来防止被篡改。
-// 步骤：
-// 1. 使用私钥对消息摘要进行加密，形成数字签名；
-// 2. 使用公钥对签名进行解密，得到摘要原文；
-// 3. 计算消息摘要，并与解密得到的摘要原文进行比对。
-//
-func main() {
-
-	// 生成公钥
-	block, _ := pem.Decode(publicKey)
-	if block == nil {
-		log.Fatal(errors.New("public key error"))
-	}
-	pubInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		log.Fatal(err)
-	}
-	pub := pubInterface.(*rsa.PublicKey)
-
+func signature(origindata []byte) []byte {
 	// 生成私钥
-	block, _ = pem.Decode(privateKey)
+	block, _ := pem.Decode(privateKey)
 	if block == nil {
-		log.Fatal(errors.New("private key error"))
+		log.Println("private key error")
+		return nil
 	}
 	priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return nil
 	}
-
-	// 使用公钥对数据进行加密
-	// label := []byte("")
-	// hash := sha256.New()
-	// ciphertext, err := rsa.EncryptOAEP(hash, rand.Reader, pub, origindata, label)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// fmt.Println("ciphertext:", ciphertext)
-	// fmt.Println()
 
 	// Message - Signature
 	var opts rsa.PSSOptions
@@ -109,25 +79,56 @@ func main() {
 	// 使用私钥对哈希值进行加密
 	signature, err := rsa.SignPSS(rand.Reader, priv, newhash, hashed, &opts)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return nil
 	}
 
-	fmt.Println("signature:", signature)
-	fmt.Println()
+	return signature
+}
 
-	// 使用私钥对加密数据进行解密
-	// origindata, err = rsa.DecryptOAEP(hash, rand.Reader, priv, ciphertext, label)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Println("origindata:", string(origindata))
-	// fmt.Println()
+func verifySignature(origindata []byte, sig []byte) bool {
+	// 生成公钥
+	block, _ := pem.Decode(publicKey)
+	if block == nil {
+		log.Println("public key error")
+		return false
+	}
+	pubInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	pub := pubInterface.(*rsa.PublicKey)
+
+	// Message - Signature
+	var opts rsa.PSSOptions
+	opts.SaltLength = rsa.PSSSaltLengthAuto
+	PSSmessage := origindata
+	newhash := crypto.SHA256 // Hash function
+	pssh := newhash.New()
+	pssh.Write(PSSmessage)
+	hashed := pssh.Sum(nil)
 
 	// 使用公钥验证数字签名
-	err = rsa.VerifyPSS(pub, newhash, hashed, signature, &opts)
+	err = rsa.VerifyPSS(pub, newhash, hashed, sig, &opts)
 	if err != nil {
-		log.Fatal(err)
-	} else {
-		fmt.Println("Verify signature successful.")
+		log.Println(err)
+		return false
 	}
+
+	log.Println("Verify signature successful")
+	return true
+}
+
+//
+// 假设数据并不需要加密传输，只需要通过数字签名来防止被篡改。
+// 步骤：
+// 1. 使用私钥对消息摘要进行加密，形成数字签名；
+// 2. 使用公钥对签名进行解密，得到摘要原文；
+// 3. 计算消息摘要，并与解密得到的摘要原文进行比对。
+//
+func main() {
+	sig := signature(origindata)
+	result := verifySignature(origindata, sig)
+	fmt.Println(result)
 }

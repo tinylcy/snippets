@@ -116,7 +116,7 @@ func verifySignature(origindata []byte, sig []byte) bool {
 		return false
 	}
 
-	log.Println("Verify signature successful")
+	// log.Println("Verify signature successful")
 	return true
 }
 

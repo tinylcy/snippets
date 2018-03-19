@@ -24,12 +24,12 @@ import (
 	"encoding/gob"
 	"fmt"
 	"math/rand"
+	// "strconv"
 	"sync"
 	"time"
 )
 
 // import "bytes"
-// import "encoding/gob"
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -57,10 +57,11 @@ const HEARTBEAT_TIME int = 50
 // A Go object implementing a single Raft peer.
 //
 type Raft struct {
-	mu        sync.Mutex          // Lock to protect shared access to this peer's state
-	peers     []*labrpc.ClientEnd // RPC end points of all peers
-	persister *Persister          // Object to hold this peer's persisted state
-	me        int                 // this peer's index into peers[]
+	mu            sync.Mutex          // Lock to protect shared access to this peer's state
+	peers         []*labrpc.ClientEnd // RPC end points of all peers
+	persister     *Persister          // Object to hold this peer's persisted state
+	me            int                 // this peer's index into peers[]
+	currentLeader int
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -166,7 +167,6 @@ func (rf *Raft) readPersist(data []byte) {
 // field names must start with capital letters!
 //
 type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
 	Term        int
 	CandidateId int
 
@@ -179,7 +179,6 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	// Your data here (2A).
 	Term        int
 	VoteGranted bool
 }
@@ -226,7 +225,6 @@ func (entry *AppendEntriesArgs) String() string {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
@@ -247,11 +245,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = -1
 	}
 
-	reply.Term = rf.currentTerm
+	reply.Term = args.Term
 
 	// 如果已经给其他的 Candidate 投过票了，直接返回拒绝投票。
 	if rf.votedFor != -1 && rf.votedFor != args.CandidateId {
 		reply.VoteGranted = false
+		reply.Term = args.Term
 		return
 	}
 
@@ -288,6 +287,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.NextIndex = rf.getLastEntry().Index + 1
 		return
+	}
+
+	// 校验日志项是否被篡改，如果篡改，变更状态为 Candidate，发起新一轮的选举。
+	entries := args.Entries
+	for i := range entries {
+		cmdBytes, _ := GetBytes(entries[i].Command)
+		if !verifySignature(cmdBytes, entries[i].Signature) {
+			reply.Term = args.Term
+			reply.Success = false
+			rf.status = CANDIDATE
+			return
+		}
 	}
 
 	// 只要 args 中的 Term 不比 CurrentTerm 小，即可作为心跳。
@@ -566,7 +577,6 @@ func broadcastAppendEntries(rf *Raft) {
 				break
 			}
 		}
-		//fmt.Printf("\n")
 	}
 	rf.timeToCommit <- true
 
@@ -722,4 +732,14 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	}(rf)
 
 	return rf
+}
+
+func GetBytes(key interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(key)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

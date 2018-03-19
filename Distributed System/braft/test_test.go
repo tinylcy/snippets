@@ -9,7 +9,7 @@ package raft
 //
 
 import (
-	"encoding/binary"
+	// "encoding/binary"
 	"fmt"
 	"testing"
 	"time"
@@ -36,13 +36,13 @@ func TestStartCommand(t *testing.T) {
 	command := 20
 
 	// 生成数字签名
-	bs := make([]byte, 4)
-	binary.LittleEndian.PutUint32(bs, uint32(command))
-	sig := signature(bs)
+	cmdBytes, _ := GetBytes(command)
+	sig := signature(cmdBytes)
 
 	var index int
 	var ok bool
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3; i++ {
+		time.Sleep(100 * time.Millisecond)
 		index, _, ok = cfg.rafts[leader].Start(command, sig)
 		if ok {
 			fmt.Println("Index:", index)

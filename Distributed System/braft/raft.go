@@ -82,9 +82,12 @@ type Raft struct {
 	timeToCommit chan bool
 	grantVote    chan bool
 	getHeartBeat chan bool
+	getCommit    chan bool
 
 	applyCh   chan ApplyMsg
 	voteCount int
+
+	m map[AppendEntriesCommitKey]int
 }
 
 type Entry struct {
@@ -201,6 +204,20 @@ type AppendEntriesReply struct {
 	NextIndex int
 }
 
+type AppendEntriesCommitArgs struct {
+	Term       int
+	PeerId     int    // 确认消息发送者Id
+	Signature  []byte // 数字签名，用于防止拜占庭节点伪造确认消息
+	EntryIndex int
+	EntryTerm  int
+	EntryHash  string
+}
+
+type AppendEntriesCommitReply struct {
+	Term    int
+	Success bool
+}
+
 type InstallSnapshotArgs struct {
 	Term     int
 	LeaderId int
@@ -278,7 +295,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.persist()
 
 	if !args.IsHeartbeat {
-		fmt.Printf("Follower: %d, args: %v\n", rf.me, args)
+		// fmt.Printf("Follower: %d, args: %v\n", rf.me, args)
 	}
 
 	// 如果 args 的 Term 小于 currentTerm，直接返回。
@@ -336,6 +353,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if !args.IsHeartbeat {
 		rf.logs = append(rf.logs, args.Entries...)
 		//println(strconv.Itoa(rf.me) + " append " + strconv.Itoa(len(args.Entries)) + " entry")
+		go func() {
+			for i := range args.Entries {
+				entry := args.Entries[i]
+				broadcastAppendEntriesCommit(rf, entry.Index, entry.Term)
+			}
+		}()
 	}
 
 	if rf.commitIndex < args.LeaderCommitIndex {
@@ -350,6 +373,22 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	//println("rf " + strconv.Itoa(rf.me) + " len logs " + strconv.Itoa(len(rf.logs)))
 	//println("rf " + strconv.Itoa(rf.me) + " commitIndex " + strconv.Itoa(rf.commitIndex))
 	//println("rf " + strconv.Itoa(rf.me) + " last applied " + strconv.Itoa(rf.lastApplied))
+	reply.Success = true
+}
+
+func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *AppendEntriesCommitReply) {
+	// fmt.Printf("AppendEntriesCommit - me: %d, sender: %d\n", rf.me, args.PeerId)
+	rf.lock()
+	defer rf.unLock()
+
+	key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex, Hash: args.EntryHash}
+	_, ok := rf.m[key]
+	if ok == true {
+		rf.m[key] += 1
+	} else {
+		rf.m[key] = 1
+	}
+
 	reply.Success = true
 }
 
@@ -480,6 +519,19 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
+func (rf *Raft) sendAppendEntriesCommit(server int, args *AppendEntriesCommitArgs, reply *AppendEntriesCommitReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntriesCommit", args, reply)
+	rf.lock()
+	defer rf.unLock()
+
+	// 如果 RPC 请求失败，直接返回。
+	if !ok {
+		return ok
+	}
+
+	return ok
+}
+
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
@@ -500,12 +552,17 @@ func (rf *Raft) Start(command interface{}, sig []byte) (int, int, bool) {
 	isLeader := true
 
 	rf.lock()
-	// Your code here (2B).
 	if rf.status == LEADER {
 		//println(strconv.Itoa(rf.me) + " ------ start ----- cmd " + strconv.Itoa(command.(int)))
 		index = rf.getLastEntry().Index + 1
 		entry := Entry{index, rf.currentTerm, command, sig}
 		rf.logs = append(rf.logs, entry)
+
+		// 等待一个心跳周期
+		time.Sleep(time.Duration(HEARTBEAT_TIME) * time.Millisecond)
+		// Leader 在将日志项添加到日志列表后，向其他节点广播 AppendEntriesCommit 消息。
+		broadcastAppendEntriesCommit(rf, index, rf.currentTerm)
+
 		rf.persist()
 	} else {
 		isLeader = false
@@ -617,6 +674,20 @@ func broadcastAppendEntries(rf *Raft) {
 	}
 }
 
+func broadcastAppendEntriesCommit(rf *Raft, index int, term int) {
+	// rf.lock()
+	// defer rf.unLock()
+	for i := range rf.peers {
+		if i != rf.me && rf.status != CANDIDATE {
+			args := AppendEntriesCommitArgs{Term: rf.currentTerm, PeerId: rf.me, EntryIndex: index, EntryTerm: term}
+			reply := AppendEntriesCommitReply{}
+			go func(server int) {
+				rf.sendAppendEntriesCommit(server, &args, &reply)
+			}(i)
+		}
+	}
+}
+
 func (rf *Raft) lock() {
 	rf.mu.Lock()
 }
@@ -651,6 +722,9 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.timeToCommit = make(chan bool, 1)
 	rf.grantVote = make(chan bool, 1)
 	rf.getHeartBeat = make(chan bool, 1)
+	rf.getCommit = make(chan bool, 1)
+
+	rf.m = make(map[AppendEntriesCommitKey]int)
 
 	rf.logs = make([]Entry, 1)
 	rf.commitIndex = 0

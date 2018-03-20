@@ -33,19 +33,20 @@ func TestStartCommand(t *testing.T) {
 	// is a leader elected?
 	leader := cfg.checkOneLeader()
 
-	command := 20
-
-	// 生成数字签名
-	cmdBytes, _ := GetBytes(command)
-	sig := signature(cmdBytes)
-
 	var index int
 	var ok bool
-	for i := 0; i < 3; i++ {
-		time.Sleep(100 * time.Millisecond)
+	for i := 0; i < 10; i++ {
+		command := i
+
+		// 生成数字签名
+		cmdBytes, _ := GetBytes(command)
+		sig := signature(cmdBytes)
+
+		// time.Sleep(100 * time.Millisecond)
+
 		index, _, ok = cfg.rafts[leader].Start(command, sig)
 		if ok {
-			fmt.Println("Index:", index)
+			// fmt.Println("Index:", index)
 		} else {
 			fmt.Println("Failed.")
 		}
@@ -54,6 +55,12 @@ func TestStartCommand(t *testing.T) {
 	time.Sleep(2 * RaftElectionTimeout)
 
 	n, _ := cfg.nCommitted(index)
+	for server := range cfg.rafts {
+		rf := *cfg.rafts[server]
+		fmt.Printf("me: %d  ", rf.me)
+		PrintSortedMap(rf.m)
+	}
+
 	fmt.Println("Committed number:", n)
 }
 

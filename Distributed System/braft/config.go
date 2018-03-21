@@ -325,6 +325,7 @@ func (cfg *config) checkNoLeader() {
 func (cfg *config) nCommitted(index int) (int, interface{}) {
 	count := 0
 	cmd := -1
+	// fmt.Printf("cfg.logs: %v\n", cfg.logs)
 	for i := 0; i < len(cfg.rafts); i++ {
 		if cfg.applyErr[i] != "" {
 			cfg.t.Fatal(cfg.applyErr[i])
@@ -332,7 +333,8 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
-		// fmt.Printf("len logs %d, index %d, cmd1 %d\n", len(cfg.logs[i]), index, cmd1)
+		// fmt.Printf("cfg.logs: %v\n", cfg.logs)
+		// fmt.Printf("index: %d, cmd1: %d\n", index, cmd1)
 		cfg.mu.Unlock()
 
 		if ok {
@@ -401,7 +403,9 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			}
 			cfg.mu.Unlock()
 			if rf != nil {
-				index1, _, ok := rf.Start(cmd, nil)
+				cmdBytes, _ := GetBytes(cmd)
+				sig := signature(cmdBytes)
+				index1, _, ok := rf.Start(cmd, sig)
 				if ok {
 					index = index1
 					break
@@ -409,13 +413,13 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			}
 		}
 
+		fmt.Printf("index: %d\n", index)
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-				//fmt.Printf("nd = %d, cmd ----------- (%d)\n", nd, cmd1)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {

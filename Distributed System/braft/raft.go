@@ -51,6 +51,8 @@ const (
 	LEADER                  // value --> 2
 )
 
+const quorum = 4
+
 const HEARTBEAT_TIME int = 50
 
 //
@@ -268,8 +270,8 @@ func (args *PreRequestVoteArgs) String() string {
 }
 
 func (args *RequestVoteArgs) String() string {
-	return fmt.Sprintf("CandidateId: %d, LastCommittedLogTerm: %d, LastCommittedLogIndex: %d, LastCommittedLogHash: %s",
-		args.CandidateId, args.LastCommittedLogTerm, args.LastCommittedLogIndex, args.LastCommittedLogHash)
+	return fmt.Sprintf("CandidateId: %d, Term: %d, LastCommittedLogTerm: %d, LastCommittedLogIndex: %d, LastCommittedLogHash: %s",
+		args.CandidateId, args.Term, args.LastCommittedLogTerm, args.LastCommittedLogIndex, args.LastCommittedLogHash)
 }
 
 func (rf *Raft) PreRequestVoteArgs(args *PreRequestVoteArgs, reply *PreRequestVoteReply) {
@@ -289,7 +291,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
-	fmt.Println("RequestVote: ", args)
+	// fmt.Println("RequestVote: ", args)
 	// println(strconv.Itoa(args.CandidateId) + " term " + strconv.Itoa(args.Term) + " request " + strconv.Itoa(rf.me) + " term " + strconv.Itoa(rf.currentTerm))
 
 	// 如果投票请求的 Term 比 currentTerm 小，直接返回拒绝投票。
@@ -318,8 +320,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	//////////////////// Begin Committed 证明 ////////////////////
 	if rf.commitIndex == 0 {
+		// fmt.Printf("me: %d, ...\n", rf.me)
 		reply.Term = args.Term
 		reply.VoteGranted = true
+		rf.votedFor = args.CandidateId
 		rf.grantVote <- true
 		return
 	}
@@ -329,6 +333,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		args.LastCommittedLogIndex == rf.commitIndex && args.LastCommittedLogHash == hash {
 		reply.Term = args.Term
 		reply.VoteGranted = true
+		rf.votedFor = args.CandidateId
 		rf.grantVote <- true
 		return
 	} else {
@@ -361,7 +366,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.persist()
 
 	if !args.IsHeartbeat {
-		// fmt.Printf("Follower: %d, args: %v\n", rf.me, args)
+		fmt.Printf("Follower: %d, args: %v\n", rf.me, args)
 	}
 
 	// 如果 args 的 Term 小于 currentTerm，直接返回。
@@ -456,8 +461,8 @@ func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *Append
 	}
 
 	// key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex, Hash: args.EntryHash}
-	if rf.m[key] == len(rf.peers)-1 {
-		// fmt.Printf("me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
+	if rf.m[key] == quorum {
+		fmt.Printf("me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
 		rf.commitIndex = key.Index
 		rf.timeToCommit <- true
 	}
@@ -547,7 +552,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	if reply.VoteGranted && rf.status == CANDIDATE {
 		rf.voteCount++
 		// 如果收到大部分节点的投票，向 beLeader Channel 中发送一个消息
-		if rf.voteCount > len(rf.peers)/2 {
+		if rf.voteCount >= 4 {
 			//println(strconv.Itoa(rf.me) + " get leader ----------")
 			rf.beLeader <- true
 		}

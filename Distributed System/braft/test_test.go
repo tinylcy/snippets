@@ -23,58 +23,64 @@ import (
 // (much more than the paper's range of timeouts).
 const RaftElectionTimeout = 1000 * time.Millisecond
 
-func TestStartCommand(t *testing.T) {
-	servers := 6
-	cfg := make_config(t, servers, false)
-	defer cfg.cleanup()
+// func TestStartCommand(t *testing.T) {
+// 	servers := 6
+// 	cfg := make_config(t, servers, false)
+// 	defer cfg.cleanup()
 
-	fmt.Printf("Initial election ...\n")
+// 	fmt.Printf("Initial election ...\n")
 
-	// is a leader elected?
-	leader := cfg.checkOneLeader()
+// 	// is a leader elected?
+// 	leader := cfg.checkOneLeader()
 
-	var index int
-	var ok bool
-	for i := 0; i < 10; i++ {
-		command := i
+// 	var index int
+// 	var ok bool
+// 	for i := 0; i < 10; i++ {
+// 		command := i
 
-		// 生成数字签名
-		cmdBytes, _ := GetBytes(command)
-		sig := signature(cmdBytes)
+// 		// 生成数字签名
+// 		cmdBytes, _ := GetBytes(command)
+// 		sig := signature(cmdBytes)
 
-		// time.Sleep(100 * time.Millisecond)
+// 		// time.Sleep(100 * time.Millisecond)
 
-		index, _, ok = cfg.rafts[leader].Start(command, sig)
-		if ok {
-			// fmt.Println("Index:", index)
-		} else {
-			fmt.Println("Failed.")
-		}
-	}
+// 		index, _, ok = cfg.rafts[leader].Start(command, sig)
+// 		if ok {
+// 			fmt.Println("Index:", index)
+// 		} else {
+// 			fmt.Println("Failed.")
+// 		}
+// 	}
 
-	time.Sleep(2 * RaftElectionTimeout)
+// 	time.Sleep(2 * RaftElectionTimeout)
 
-	n, _ := cfg.nCommitted(index)
-	for server := range cfg.rafts {
-		rf := *cfg.rafts[server]
-		fmt.Printf("me: %d, commitIndex: %d | ", rf.me, rf.commitIndex)
-		PrintSortedMap(rf.m)
-	}
+// 	n, _ := cfg.nCommitted(index)
+// 	for server := range cfg.rafts {
+// 		rf := *cfg.rafts[server]
+// 		fmt.Printf("me: %d, commitIndex: %d | ", rf.me, rf.commitIndex)
+// 		PrintSortedMap(rf.m)
+// 	}
 
-	fmt.Println("Committed number:", n)
-}
+// 	fmt.Println("Committed number:", n)
+// }
 
 // func TestInitialElection2A(t *testing.T) {
-// 	servers := 3
+// 	servers := 6
 // 	cfg := make_config(t, servers, false)
 // 	defer cfg.cleanup()
 
 // 	fmt.Printf("Test (2A): initial election ...\n")
 
 // 	// is a leader elected?
-// 	cfg.checkOneLeader()
+// 	leader := cfg.checkOneLeader()
 
-// 	index, _, ok := cfg.rafts[leader].Start(20)
+// 	command := 20
+// 	// 生成数字签名
+// 	cmdBytes, _ := GetBytes(command)
+// 	sig := signature(cmdBytes)
+
+// 	index, _, ok := cfg.rafts[leader].Start(command, sig)
+// 	fmt.Printf("index: %d, ok: %v\n", index, ok)
 
 // 	// does the leader+term stay the same if there is no network failure?
 // 	term1 := cfg.checkTerms()
@@ -88,43 +94,31 @@ func TestStartCommand(t *testing.T) {
 // }
 
 // func TestReElection2A(t *testing.T) {
-// 	servers := 3
+// 	servers := 6
 // 	cfg := make_config(t, servers, false)
 // 	defer cfg.cleanup()
 
-// 	fmt.Printf("Test (2A): election after network failure ...\n")
+// 	fmt.Printf("Test: election after network failure ...\n")
 
 // 	leader1 := cfg.checkOneLeader()
+// 	fmt.Printf("leader1: %d\n", leader1)
 
 // 	// if the leader disconnects, a new one should be elected.
 // 	cfg.disconnect(leader1)
-// 	cfg.checkOneLeader()
+// 	tmpLeader := cfg.checkOneLeader()
+// 	fmt.Printf("tmpLeader: %d\n", tmpLeader)
 
 // 	// if the old leader rejoins, that shouldn't
 // 	// disturb the old leader.
 // 	cfg.connect(leader1)
 // 	leader2 := cfg.checkOneLeader()
-
-// 	// if there's no quorum, no leader should
-// 	// be elected.
-// 	cfg.disconnect(leader2)
-// 	cfg.disconnect((leader2 + 1) % servers)
-// 	time.Sleep(2 * RaftElectionTimeout)
-// 	cfg.checkNoLeader()
-
-// 	// if a quorum arises, it should elect a leader.
-// 	cfg.connect((leader2 + 1) % servers)
-// 	cfg.checkOneLeader()
-
-// 	// re-join of last node shouldn't prevent leader from existing.
-// 	cfg.connect(leader2)
-// 	cfg.checkOneLeader()
+// 	fmt.Printf("leader2: %d\n", leader2)
 
 // 	fmt.Printf("  ... Passed\n")
 // }
 
 // func TestBasicAgree2B(t *testing.T) {
-// 	servers := 5
+// 	servers := 6
 // 	cfg := make_config(t, servers, false)
 // 	defer cfg.cleanup()
 
@@ -132,7 +126,9 @@ func TestStartCommand(t *testing.T) {
 
 // 	iters := 3
 // 	for index := 1; index < iters+1; index++ {
+// 		// fmt.Println("....")
 // 		nd, _ := cfg.nCommitted(index)
+// 		fmt.Printf("nd: %d\n", nd)
 // 		if nd > 0 {
 // 			t.Fatalf("some have committed before Start()")
 // 		}
@@ -146,36 +142,38 @@ func TestStartCommand(t *testing.T) {
 // 	fmt.Printf("  ... Passed\n")
 // }
 
-// func TestFailAgree2B(t *testing.T) {
-// 	servers := 3
-// 	cfg := make_config(t, servers, false)
-// 	defer cfg.cleanup()
+func TestFailAgree2B(t *testing.T) {
+	servers := 6
+	cfg := make_config(t, servers, false)
+	defer cfg.cleanup()
 
-// 	fmt.Printf("Test (2B): agreement despite follower disconnection ...\n")
+	fmt.Printf("Test (2B): agreement despite follower disconnection ...\n")
 
-// 	cfg.one(101, servers)
+	ret := cfg.one(101, servers)
+	fmt.Printf("ret: %d\n", ret)
 
-// 	// follower network disconnection
-// 	leader := cfg.checkOneLeader()
-// 	cfg.disconnect((leader + 1) % servers)
+	// follower network disconnection
+	leader := cfg.checkOneLeader()
+	fmt.Printf("leader: %d\n", leader)
+	cfg.disconnect((leader + 1) % servers)
 
-// 	// agree despite one disconnected server?
-// 	cfg.one(102, servers-1)
-// 	cfg.one(103, servers-1)
-// 	time.Sleep(RaftElectionTimeout)
-// 	cfg.one(104, servers-1)
-// 	cfg.one(105, servers-1)
+	// agree despite one disconnected server?
+	cfg.one(102, servers-1)
+	// cfg.one(103, servers-1)
+	// time.Sleep(RaftElectionTimeout)
+	// cfg.one(104, servers-1)
+	// cfg.one(105, servers-1)
 
-// 	// re-connect
-// 	cfg.connect((leader + 1) % servers)
+	// // re-connect
+	// cfg.connect((leader + 1) % servers)
 
-// 	// agree with full set of servers?
-// 	cfg.one(106, servers)
-// 	time.Sleep(RaftElectionTimeout)
-// 	cfg.one(107, servers)
+	// // agree with full set of servers?
+	// cfg.one(106, servers)
+	// time.Sleep(RaftElectionTimeout)
+	// cfg.one(107, servers)
 
-// 	fmt.Printf("  ... Passed\n")
-// }
+	fmt.Printf("  ... Passed\n")
+}
 
 // func TestFailNoAgree2B(t *testing.T) {
 // 	servers := 5

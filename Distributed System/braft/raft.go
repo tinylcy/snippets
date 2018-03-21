@@ -166,6 +166,25 @@ func (rf *Raft) readPersist(data []byte) {
 }
 
 //
+// 	预投票阶段，请求其他节点给自己投票，但是还需要 Committed证明 阶段
+//
+type PreRequestVoteArgs struct {
+	Term                  int // Candidate Term
+	CandidateId           int // Candidate Id
+	LastCommittedLogTerm  int // Candidate当前最后一个已经 Committed 日志项的 Term（可能伪造）
+	LastCommittedLogIndex int // Candidate当前最后一个已经 Committed 日志项的 Index（可能伪造）
+}
+
+//
+// 预投票响应，包含待证明日志项的 Index 和 Term。
+//
+type PreRequestVoteReply struct {
+	ReceiverId                    int
+	ReceiverLastCommittedLogTerm  int
+	ReceiverLastCommittedLogIndex int
+}
+
+//
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
@@ -175,6 +194,11 @@ type RequestVoteArgs struct {
 
 	LastLogIndex int
 	LastLogTerm  int
+
+	// Committed 证明
+	LastCommittedLogTerm  int    // 对方节点最后一个已经 Committed 日志项的 Term
+	LastCommittedLogIndex int    // 对方节点最后一个已经 Committed 日志项的 Index
+	LastCommittedLogHash  string // 对方节点最后一个已经 Committed 日志项的 Hash
 }
 
 //
@@ -233,9 +257,29 @@ type InstallSnapshotReply struct {
 	Success bool
 }
 
-func (entry *AppendEntriesArgs) String() string {
+func (args *AppendEntriesArgs) String() string {
 	return fmt.Sprintf("Term: %d, LeaderId: %d, Entries: %v, LeaderCommitIndex: %d, PrevLogIndex: %d, PrevLogTerm: %d",
-		entry.Term, entry.LeaderId, entry.Entries, entry.LeaderCommitIndex, entry.PrevLogIndex, entry.PrevLogTerm)
+		args.Term, args.LeaderId, args.Entries, args.LeaderCommitIndex, args.PrevLogIndex, args.PrevLogTerm)
+}
+
+func (args *PreRequestVoteArgs) String() string {
+	return fmt.Sprintf("CandidateId: %d, LastCommittedLogTerm: %d, LastCommittedLogIndex: %d",
+		args.CandidateId, args.LastCommittedLogTerm, args.LastCommittedLogIndex)
+}
+
+func (args *RequestVoteArgs) String() string {
+	return fmt.Sprintf("CandidateId: %d, LastCommittedLogTerm: %d, LastCommittedLogIndex: %d, LastCommittedLogHash: %s",
+		args.CandidateId, args.LastCommittedLogTerm, args.LastCommittedLogIndex, args.LastCommittedLogHash)
+}
+
+func (rf *Raft) PreRequestVoteArgs(args *PreRequestVoteArgs, reply *PreRequestVoteReply) {
+	rf.lock()
+	defer rf.unLock()
+
+	// fmt.Println("PreRequestVoteArgs: ", args)
+	reply.ReceiverId = rf.me
+	reply.ReceiverLastCommittedLogTerm = rf.logs[rf.commitIndex].Term
+	reply.ReceiverLastCommittedLogIndex = rf.commitIndex
 }
 
 //
@@ -245,6 +289,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
+	fmt.Println("RequestVote: ", args)
 	// println(strconv.Itoa(args.CandidateId) + " term " + strconv.Itoa(args.Term) + " request " + strconv.Itoa(rf.me) + " term " + strconv.Itoa(rf.currentTerm))
 
 	// 如果投票请求的 Term 比 currentTerm 小，直接返回拒绝投票。
@@ -270,6 +315,27 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = args.Term
 		return
 	}
+
+	//////////////////// Begin Committed 证明 ////////////////////
+	if rf.commitIndex == 0 {
+		reply.Term = args.Term
+		reply.VoteGranted = true
+		rf.grantVote <- true
+		return
+	}
+
+	hash, _ := SHA256(rf.logs[rf.commitIndex])
+	if args.LastCommittedLogTerm == rf.logs[rf.commitIndex].Term &&
+		args.LastCommittedLogIndex == rf.commitIndex && args.LastCommittedLogHash == hash {
+		reply.Term = args.Term
+		reply.VoteGranted = true
+		rf.grantVote <- true
+		return
+	} else {
+		reply.Term = args.Term
+		reply.VoteGranted = false
+	}
+	//////////////////// End Committed 证明 ////////////////////
 
 	// 当前节点最后一个日志项的 Index 和 Term。
 	receiverLastIndex := rf.getLastEntry().Index
@@ -406,6 +472,15 @@ func (rf *Raft) applyCommand(entry Entry) {
 	rf.applyCh <- applyCh
 	//println(strconv.Itoa(rf.me) + " apply ***************************** " + strconv.Itoa(entry.Command.(int)))
 	rf.lastApplied++
+}
+
+func (rf *Raft) sendPreRquestVoteArgs(server int, args *PreRequestVoteArgs, reply *PreRequestVoteReply) bool {
+	ok := rf.peers[server].Call("Raft.PreRequestVoteArgs", args, reply)
+	if !ok {
+		return ok
+	}
+	// TODO
+	return ok
 }
 
 //
@@ -607,6 +682,10 @@ func election(rf *Raft) {
 	go func() {
 		broadcastRequestVote(rf)
 	}()
+
+	go func() {
+		broadcastPreRequestVote(rf)
+	}()
 }
 
 func broadcastRequestVote(rf *Raft) {
@@ -615,10 +694,24 @@ func broadcastRequestVote(rf *Raft) {
 	rf.voteCount = 1
 	for i := range rf.peers {
 		if i != rf.me && rf.status == CANDIDATE {
-			requestVoteArgs := RequestVoteArgs{rf.currentTerm, rf.me, rf.getLastEntry().Index, rf.getLastEntry().Term}
+			requestVoteArgs := RequestVoteArgs{Term: rf.currentTerm, CandidateId: rf.me, LastLogIndex: rf.getLastEntry().Index, LastLogTerm: rf.getLastEntry().Term}
 			result := RequestVoteReply{}
 			go func(server int) {
 				rf.sendRequestVote(server, &requestVoteArgs, &result)
+			}(i)
+		}
+	}
+}
+
+func broadcastPreRequestVote(rf *Raft) {
+	rf.lock()
+	defer rf.unLock()
+	for i := range rf.peers {
+		if i != rf.me && rf.status == CANDIDATE {
+			args := PreRequestVoteArgs{Term: rf.currentTerm, CandidateId: rf.me, LastCommittedLogTerm: rf.logs[rf.commitIndex].Term, LastCommittedLogIndex: rf.commitIndex}
+			reply := PreRequestVoteReply{}
+			go func(server int) {
+				rf.sendPreRquestVoteArgs(server, &args, &reply)
 			}(i)
 		}
 	}

@@ -57,7 +57,7 @@ func TestStartCommand(t *testing.T) {
 	n, _ := cfg.nCommitted(index)
 	for server := range cfg.rafts {
 		rf := *cfg.rafts[server]
-		fmt.Printf("me: %d  ", rf.me)
+		fmt.Printf("me: %d, commitIndex: %d | ", rf.me, rf.commitIndex)
 		PrintSortedMap(rf.m)
 	}
 

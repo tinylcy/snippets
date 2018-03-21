@@ -332,7 +332,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
-		//fmt.Printf("len logs %d, index %d, cmd1 %d\n",len(cfg.logs[i]), index, cmd1)
+		// fmt.Printf("len logs %d, index %d, cmd1 %d\n", len(cfg.logs[i]), index, cmd1)
 		cfg.mu.Unlock()
 
 		if ok {

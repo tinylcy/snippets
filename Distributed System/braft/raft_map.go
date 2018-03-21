@@ -30,6 +30,16 @@ func (s CommitKeySlice) Less(i, j int) bool {
 	return s[i].Hash < s[j].Hash
 }
 
+func (key AppendEntriesCommitKey) less(elem AppendEntriesCommitKey) bool {
+	if key.Term < elem.Term {
+		return true
+	}
+	if key.Index < elem.Index {
+		return true
+	}
+	return key.Hash < elem.Hash
+}
+
 func PrintSortedMap(m map[AppendEntriesCommitKey]int) {
 	var keys []AppendEntriesCommitKey
 	for k := range m {
@@ -40,5 +50,13 @@ func PrintSortedMap(m map[AppendEntriesCommitKey]int) {
 		fmt.Printf("[%v-%v] ", k, m[k])
 	}
 	fmt.Println("\n")
+}
 
+func GetMapSortedKeys(m map[AppendEntriesCommitKey]int) []AppendEntriesCommitKey {
+	var keys []AppendEntriesCommitKey
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Sort(CommitKeySlice(keys))
+	return keys
 }

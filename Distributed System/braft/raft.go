@@ -207,7 +207,7 @@ type AppendEntriesReply struct {
 type AppendEntriesCommitArgs struct {
 	Term       int
 	PeerId     int    // 确认消息发送者Id
-	Signature  []byte // 数字签名，用于防止拜占庭节点伪造确认消息
+	Signature  []byte // PeerId 的数字签名，用于防止拜占庭节点伪造确认消息
 	EntryIndex int
 	EntryTerm  int
 	EntryHash  string
@@ -361,14 +361,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}()
 	}
 
-	if rf.commitIndex < args.LeaderCommitIndex {
-		if args.LeaderCommitIndex < rf.getLastEntry().Index {
-			rf.commitIndex = args.LeaderCommitIndex
-		} else {
-			rf.commitIndex = rf.getLastEntry().Index
-		}
-		rf.timeToCommit <- true
-	}
+	// if rf.commitIndex < args.LeaderCommitIndex {
+	// 	if args.LeaderCommitIndex < rf.getLastEntry().Index {
+	// 		rf.commitIndex = args.LeaderCommitIndex
+	// 	} else {
+	// 		rf.commitIndex = rf.getLastEntry().Index
+	// 	}
+	// 	rf.timeToCommit <- true
+	// }
 
 	//println("rf " + strconv.Itoa(rf.me) + " len logs " + strconv.Itoa(len(rf.logs)))
 	//println("rf " + strconv.Itoa(rf.me) + " commitIndex " + strconv.Itoa(rf.commitIndex))
@@ -387,6 +387,13 @@ func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *Append
 		rf.m[key] += 1
 	} else {
 		rf.m[key] = 1
+	}
+
+	// key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex, Hash: args.EntryHash}
+	if rf.m[key] == len(rf.peers)-1 {
+		// fmt.Printf("me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
+		rf.commitIndex = key.Index
+		rf.timeToCommit <- true
 	}
 
 	reply.Success = true

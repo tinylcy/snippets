@@ -39,8 +39,8 @@ func TestStartCommand(t *testing.T) {
 	var index int
 	var ok bool
 
-	start := time.Now()
-	var count = 100
+	// start := time.Now()
+	var count = 10
 	for i := 0; i < count; i++ {
 		// fmt.Printf("i: %d\n", i)
 		command := i
@@ -52,6 +52,7 @@ func TestStartCommand(t *testing.T) {
 		// time.Sleep(100 * time.Millisecond)
 
 		index, _, ok = cfg.rafts[leader].Start(command, sig)
+
 		if ok {
 			fmt.Println("Index:", index)
 		} else {
@@ -61,21 +62,23 @@ func TestStartCommand(t *testing.T) {
 
 	time.Sleep(2 * RaftElectionTimeout)
 
-	n, _ := cfg.nCommitted(index)
-	// for server := range cfg.rafts {
-	// 	rf := *cfg.rafts[server]
-	// 	PrintSortedMap(rf.m)
-	// }
+	n, _ := cfg.nCommitted(5)
+
+	for server := range cfg.rafts {
+		rf := *cfg.rafts[server]
+		fmt.Printf("server: %d, commitIndex: %d\n", rf.me, rf.commitIndex)
+		// PrintSortedMap(rf.m)
+	}
 
 	fmt.Println("Committed number:", n)
 
-	end := time.Now()
-	elapsed := end.Sub(start)
-	fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
+	// end := time.Now()
+	// elapsed := end.Sub(start)
+	// fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
 
 }
 
-// // PASSED
+// PASSED
 // func TestInitialElection2A(t *testing.T) {
 // 	servers := 6
 // 	cfg := make_config(t, servers, false)
@@ -138,11 +141,10 @@ func TestStartCommand(t *testing.T) {
 
 // 	fmt.Printf("Test (2B): basic agreement ...\n")
 
-// 	iters := 3
+// 	iters := 1
 // 	for index := 1; index < iters+1; index++ {
 // 		// fmt.Println("....")
 // 		nd, _ := cfg.nCommitted(index)
-// 		fmt.Printf("nd: %d\n", nd)
 // 		if nd > 0 {
 // 			t.Fatalf("some have committed before Start()")
 // 		}

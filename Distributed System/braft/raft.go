@@ -51,7 +51,7 @@ const (
 	LEADER                  // value --> 2
 )
 
-const quorum = 1
+const quorum = 4
 
 const HEARTBEAT_TIME int = 50
 
@@ -458,10 +458,22 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.logs = rf.logs[:args.PrevLogIndex+1]
 	if !args.IsHeartbeat {
 		rf.logs = append(rf.logs, args.Entries...)
+		// fmt.Printf("AppendEntries - server: %d, len(logs): %d\n", rf.me, len(rf.logs))
+		// fmt.Printf("rf: %d, logs: %v\n", rf.me, rf.logs)
 		//println(strconv.Itoa(rf.me) + " append " + strconv.Itoa(len(args.Entries)) + " entry")
 		go func() {
 			for i := range args.Entries {
 				entry := args.Entries[i]
+
+				// hashed, _ := SHA256(entry)
+				// key := AppendEntriesCommitKey{Term: entry.Term, Index: entry.Index}
+				// fmt.Printf("server: %d, index: %d, map: %v, m[key]: %d\n", rf.me, key.Index, rf.m, rf.m[key])
+				// if rf.m[key] >= quorum {
+				// 	fmt.Printf("AppendEntriesCommit - me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
+				// 	rf.commitIndex = key.Index
+				// 	rf.timeToCommit <- true
+				// }
+
 				broadcastAppendEntriesCommit(rf, entry.Index, entry.Term)
 			}
 		}()
@@ -487,7 +499,7 @@ func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *Append
 	rf.lock()
 	defer rf.unLock()
 
-	key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex, Hash: args.EntryHash}
+	key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex}
 	_, ok := rf.m[key]
 	if ok == true {
 		rf.m[key] += 1
@@ -495,12 +507,17 @@ func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *Append
 		rf.m[key] = 1
 	}
 
-	// key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex, Hash: args.EntryHash}
-	if rf.m[key] == quorum {
-		// fmt.Printf("me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
+	if rf.m[key] >= quorum && rf.containsLogEntry(key.Term, key.Index) {
+		// fmt.Printf("-- server: %d, rf.m[%v] = %d\n", rf.me, key, rf.m[key])
 		rf.commitIndex = key.Index
 		rf.timeToCommit <- true
 	}
+
+	// if rf.m[key] >= quorum {
+	// 	// fmt.Printf("AppendEntriesCommit - me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
+	// 	rf.commitIndex = key.Index
+	// 	rf.timeToCommit <- true
+	// }
 
 	reply.Success = true
 }
@@ -780,20 +797,20 @@ func broadcastAppendEntries(rf *Raft) {
 	rf.lock()
 	defer rf.unLock()
 
-	for N := rf.commitIndex + 1; N <= rf.getLastEntry().Index; N++ {
-		count := 1
-		for i := 0; i < len(rf.matchIndex); i++ {
-			//fmt.Printf("%d ", rf.matchIndex[i])
-			if rf.me != i && rf.matchIndex[i] >= N && rf.logs[N].Term == rf.currentTerm {
-				count++
-			}
-			if count > len(rf.matchIndex)/2 {
-				rf.commitIndex = N
-				break
-			}
-		}
-	}
-	rf.timeToCommit <- true
+	// for N := rf.commitIndex + 1; N <= rf.getLastEntry().Index; N++ {
+	// 	count := 1
+	// 	for i := 0; i < len(rf.matchIndex); i++ {
+	// 		//fmt.Printf("%d ", rf.matchIndex[i])
+	// 		if rf.me != i && rf.matchIndex[i] >= N && rf.logs[N].Term == rf.currentTerm {
+	// 			count++
+	// 		}
+	// 		if count > len(rf.matchIndex)/2 {
+	// 			rf.commitIndex = N
+	// 			break
+	// 		}
+	// 	}
+	// }
+	// rf.timeToCommit <- true
 
 	for i := range rf.peers {
 		if i != rf.me && rf.status == LEADER {
@@ -954,6 +971,9 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 				//println("rf " + strconv.Itoa(rf.me) + " commitIndex " + strconv.Itoa(rf.commitIndex))
 				//println("rf " + strconv.Itoa(rf.me) + " last applied " + strconv.Itoa(rf.lastApplied))
 
+				// fmt.Printf("server: %d,lastApplied: %d, commitIndex: %d, len(logs): %d\n",
+				// rf.me, rf.lastApplied, rf.commitIndex, len(rf.logs))
+
 				for rf.lastApplied < rf.commitIndex && rf.lastApplied+1 < len(rf.logs) {
 					//println(lastAppliedIndex)
 					rf.applyCommand(rf.logs[rf.lastApplied+1])
@@ -964,6 +984,16 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	}(rf)
 
 	return rf
+}
+
+func (rf *Raft) containsLogEntry(term int, index int) bool {
+	for i := range rf.logs {
+		entry := rf.logs[i]
+		if entry.Term == term && entry.Index == index {
+			return true
+		}
+	}
+	return false
 }
 
 func GetBytes(key interface{}) ([]byte, error) {

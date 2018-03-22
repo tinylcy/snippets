@@ -346,6 +346,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 			cmd = cmd1
 		}
 	}
+	// fmt.Printf("count: %d, cmd: %v\n", count, cmd)
 	return count, cmd
 }
 
@@ -406,20 +407,22 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 				cmdBytes, _ := GetBytes(cmd)
 				sig := signature(cmdBytes)
 				index1, _, ok := rf.Start(cmd, sig)
+				// fmt.Printf("index1: %d, ok: %v\n", index1, ok)
 				if ok {
 					index = index1
+					// fmt.Printf("index: %d\n", index)
 					break
 				}
 			}
 		}
 
-		fmt.Printf("index: %d\n", index)
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
+				// fmt.Printf("index: %d, nd: %d. cmd1: %d\n", index, nd, cmd1)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {

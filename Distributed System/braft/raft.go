@@ -51,7 +51,7 @@ const (
 	LEADER                  // value --> 2
 )
 
-const quorum = 4
+const quorum = 1
 
 const HEARTBEAT_TIME int = 50
 
@@ -181,6 +181,7 @@ type PreRequestVoteArgs struct {
 // 预投票响应，包含待证明日志项的 Index 和 Term。
 //
 type PreRequestVoteReply struct {
+	Success                       bool
 	ReceiverId                    int
 	ReceiverLastCommittedLogTerm  int
 	ReceiverLastCommittedLogIndex int
@@ -278,10 +279,44 @@ func (rf *Raft) PreRequestVoteArgs(args *PreRequestVoteArgs, reply *PreRequestVo
 	rf.lock()
 	defer rf.unLock()
 
-	// fmt.Println("PreRequestVoteArgs: ", args)
-	reply.ReceiverId = rf.me
-	reply.ReceiverLastCommittedLogTerm = rf.logs[rf.commitIndex].Term
-	reply.ReceiverLastCommittedLogIndex = rf.commitIndex
+	if args.Term < rf.currentTerm {
+		reply.Success = false
+		return
+	}
+
+	if args.Term > rf.currentTerm {
+		rf.status = FOLLOWER
+		rf.votedFor = -1
+		rf.voteCount = 0
+	}
+
+	rf.currentTerm = args.Term
+
+	commitTerm := rf.logs[rf.commitIndex].Term
+
+	if commitTerm == 0 || rf.commitIndex == 0 {
+		reply.Success = true
+		reply.ReceiverId = rf.me
+		reply.ReceiverLastCommittedLogTerm = 0
+		reply.ReceiverLastCommittedLogIndex = 0
+		return
+	}
+
+	// fmt.Printf("server: %d, commitTerm: %d, commitIndex: %d args.Term: %d\n",
+	// rf.me, commitTerm, rf.commitIndex, args.Term)
+
+	if (args.LastCommittedLogTerm > rf.logs[rf.commitIndex].Term) ||
+		(args.LastCommittedLogTerm == rf.logs[rf.commitIndex].Term && args.LastCommittedLogIndex >= rf.commitIndex) {
+		// fmt.Printf("serve %d received PreRequestVoteArgs: %v\n", rf.me, args)
+		reply.ReceiverId = rf.me
+		reply.ReceiverLastCommittedLogTerm = rf.logs[rf.commitIndex].Term
+		reply.ReceiverLastCommittedLogIndex = rf.commitIndex
+		reply.Success = true
+		return
+	}
+
+	reply.Success = false
+
 }
 
 //
@@ -291,7 +326,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
-	// fmt.Println("RequestVote: ", args)
+	fmt.Printf("server: %d receiced RequestVote: %v\n", rf.me, args)
 	// println(strconv.Itoa(args.CandidateId) + " term " + strconv.Itoa(args.Term) + " request " + strconv.Itoa(rf.me) + " term " + strconv.Itoa(rf.currentTerm))
 
 	// 如果投票请求的 Term 比 currentTerm 小，直接返回拒绝投票。
@@ -366,7 +401,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.persist()
 
 	if !args.IsHeartbeat {
-		fmt.Printf("Follower: %d, args: %v\n", rf.me, args)
+		// fmt.Printf("Follower: %d, args: %v\n", rf.me, args)
 	}
 
 	// 如果 args 的 Term 小于 currentTerm，直接返回。
@@ -462,7 +497,7 @@ func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *Append
 
 	// key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex, Hash: args.EntryHash}
 	if rf.m[key] == quorum {
-		fmt.Printf("me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
+		// fmt.Printf("me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
 		rf.commitIndex = key.Index
 		rf.timeToCommit <- true
 	}
@@ -481,8 +516,26 @@ func (rf *Raft) applyCommand(entry Entry) {
 
 func (rf *Raft) sendPreRquestVoteArgs(server int, args *PreRequestVoteArgs, reply *PreRequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.PreRequestVoteArgs", args, reply)
+
 	if !ok {
 		return ok
+	}
+
+	if reply.Success {
+		// if reply.ReceiverLastCommittedLogTerm == 0 || reply.ReceiverLastCommittedLogIndex == 0 {
+		requestVoteArgs := RequestVoteArgs{}
+		requestVoteArgs.CandidateId = rf.me
+		requestVoteArgs.Term = rf.currentTerm
+		requestVoteArgs.LastCommittedLogTerm = reply.ReceiverLastCommittedLogTerm
+		requestVoteArgs.LastCommittedLogIndex = reply.ReceiverLastCommittedLogIndex
+		requestVoteArgs.LastCommittedLogHash, _ = SHA256(rf.logs[reply.ReceiverLastCommittedLogIndex])
+
+		requestVoteReply := RequestVoteReply{}
+
+		go func() {
+			rf.sendRequestVote(reply.ReceiverId, &requestVoteArgs, &requestVoteReply)
+		}()
+		//}
 	}
 	// TODO
 	return ok
@@ -552,7 +605,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	if reply.VoteGranted && rf.status == CANDIDATE {
 		rf.voteCount++
 		// 如果收到大部分节点的投票，向 beLeader Channel 中发送一个消息
-		if rf.voteCount >= 4 {
+		if rf.voteCount >= quorum {
 			//println(strconv.Itoa(rf.me) + " get leader ----------")
 			rf.beLeader <- true
 		}
@@ -684,9 +737,9 @@ func election(rf *Raft) {
 	rf.unLock()
 
 	// 广播投票请求
-	go func() {
-		broadcastRequestVote(rf)
-	}()
+	// go func() {
+	// 	broadcastRequestVote(rf)
+	// }()
 
 	go func() {
 		broadcastPreRequestVote(rf)

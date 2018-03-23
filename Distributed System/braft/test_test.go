@@ -39,8 +39,8 @@ func TestStartCommand(t *testing.T) {
 	var index int
 	var ok bool
 
-	// start := time.Now()
-	var count = 10
+	start := time.Now()
+	var count = 1000
 	for i := 0; i < count; i++ {
 		// fmt.Printf("i: %d\n", i)
 		command := i
@@ -49,7 +49,7 @@ func TestStartCommand(t *testing.T) {
 		cmdBytes, _ := GetBytes(command)
 		sig := signature(cmdBytes)
 
-		// time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 
 		index, _, ok = cfg.rafts[leader].Start(command, sig)
 
@@ -62,7 +62,7 @@ func TestStartCommand(t *testing.T) {
 
 	time.Sleep(2 * RaftElectionTimeout)
 
-	n, _ := cfg.nCommitted(5)
+	n, _ := cfg.nCommitted(index)
 
 	for server := range cfg.rafts {
 		rf := *cfg.rafts[server]
@@ -72,9 +72,9 @@ func TestStartCommand(t *testing.T) {
 
 	fmt.Println("Committed number:", n)
 
-	// end := time.Now()
-	// elapsed := end.Sub(start)
-	// fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
+	end := time.Now()
+	elapsed := end.Sub(start)
+	fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
 
 }
 

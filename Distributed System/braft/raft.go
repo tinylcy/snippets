@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math/rand"
 	// "strconv"
+	// "sort"
 	"sync"
 	"time"
 )
@@ -137,13 +138,14 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
-	w := new(bytes.Buffer)
-	e := gob.NewEncoder(w)
-	e.Encode(rf.currentTerm)
-	e.Encode(rf.votedFor)
-	e.Encode(rf.logs)
-	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
+
+	// w := new(bytes.Buffer)
+	// e := gob.NewEncoder(w)
+	// e.Encode(rf.currentTerm)
+	// e.Encode(rf.votedFor)
+	// e.Encode(rf.logs)
+	// data := w.Bytes()
+	// rf.persister.SaveRaftState(data)
 }
 
 //
@@ -156,15 +158,16 @@ func (rf *Raft) readPersist(data []byte) {
 	// d := gob.NewDecoder(r)
 	// d.Decode(&rf.xxx)
 	// d.Decode(&rf.yyy)
-	if data == nil || len(data) < 1 {
-		// bootstrap without any state?
-		return
-	}
-	r := bytes.NewBuffer(data)
-	d := gob.NewDecoder(r)
-	d.Decode(&rf.currentTerm)
-	d.Decode(&rf.votedFor)
-	d.Decode(&rf.logs)
+
+	// if data == nil || len(data) < 1 {
+	// 	// bootstrap without any state?
+	// 	return
+	// }
+	// r := bytes.NewBuffer(data)
+	// d := gob.NewDecoder(r)
+	// d.Decode(&rf.currentTerm)
+	// d.Decode(&rf.votedFor)
+	// d.Decode(&rf.logs)
 }
 
 //
@@ -326,7 +329,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
-	fmt.Printf("server: %d receiced RequestVote: %v\n", rf.me, args)
+	// fmt.Printf("server: %d receiced RequestVote: %v\n", rf.me, args)
 	// println(strconv.Itoa(args.CandidateId) + " term " + strconv.Itoa(args.Term) + " request " + strconv.Itoa(rf.me) + " term " + strconv.Itoa(rf.currentTerm))
 
 	// 如果投票请求的 Term 比 currentTerm 小，直接返回拒绝投票。
@@ -495,9 +498,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *AppendEntriesCommitReply) {
-	// fmt.Printf("AppendEntriesCommit - me: %d, sender: %d\n", rf.me, args.PeerId)
 	rf.lock()
 	defer rf.unLock()
+
+	// fmt.Printf("AppendEntriesCommit - me: %d, term: %d, index: %d, sender: %d\n", rf.me, args.EntryTerm, args.EntryIndex, args.PeerId)
 
 	key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex}
 	_, ok := rf.m[key]
@@ -507,11 +511,27 @@ func (rf *Raft) AppendEntriesCommit(args *AppendEntriesCommitArgs, reply *Append
 		rf.m[key] = 1
 	}
 
+	// 当节点收到某一条日志项的 Commit 信息后，需要在节点自身已经将对应日志项添加到日志列表后方可认为是 Committed。
 	if rf.m[key] >= quorum && rf.containsLogEntry(key.Term, key.Index) {
-		// fmt.Printf("-- server: %d, rf.m[%v] = %d\n", rf.me, key, rf.m[key])
+		// fmt.Printf("server: %d, rf.m[%v] = %d, commitIndex: %d\n", rf.me, key, rf.m[key], rf.commitIndex)
 		rf.commitIndex = key.Index
 		rf.timeToCommit <- true
 	}
+
+	// var keys []AppendEntriesCommitKey
+	// for k := range rf.m {
+	// 	keys = append(keys, k)
+	// }
+	// sort.Sort(CommitKeySlice(keys))
+
+	// for i := len(keys) - 1; i > 0; i-- {
+	// 	if rf.m[key] >= quorum && rf.containsLogEntry(key.Term, key.Index) {
+	// 		rf.commitIndex = key.Index
+	// 		fmt.Printf("server: %d, rf.m[%v] = %d, commitIndex: %d\n", rf.me, key, rf.m[key], rf.commitIndex)
+	// 		rf.timeToCommit <- true
+	// 		break
+	// 	}
+	// }
 
 	// if rf.m[key] >= quorum {
 	// 	// fmt.Printf("AppendEntriesCommit - me: %d - Log Entry [Term: %d, Index: %d] Committed.\n", rf.me, key.Term, key.Index)
@@ -715,8 +735,6 @@ func (rf *Raft) Start(command interface{}, sig []byte) (int, int, bool) {
 		entry := Entry{index, rf.currentTerm, command, sig}
 		rf.logs = append(rf.logs, entry)
 
-		// 等待一个心跳周期
-		time.Sleep(time.Duration(HEARTBEAT_TIME) * time.Millisecond)
 		// Leader 在将日志项添加到日志列表后，向其他节点广播 AppendEntriesCommit 消息。
 		broadcastAppendEntriesCommit(rf, index, rf.currentTerm)
 

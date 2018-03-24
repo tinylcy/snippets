@@ -26,43 +26,41 @@ const RaftElectionTimeout = 1000 * time.Millisecond
 
 // PASSED
 func TestStartCommand(t *testing.T) {
-	servers := 10
+	servers := 21
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
 
 	fmt.Printf("Initial election ...\n")
 
-	start := time.Now()
-
-	// is a leader elected?
 	leader := cfg.checkOneLeader()
 	fmt.Printf("leader: %d\n", leader)
 
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
+
+	start := time.Now()
 
 	var index int
-	var ok bool
 
-	// start := time.Now()
-	var count = 100
-	for i := 0; i < count; i++ {
-		// fmt.Printf("i: %d\n", i)
-		command := i
+	var count = 1
+	// for i := 0; i < count; i++ {
+	// 	// fmt.Printf("i: %d\n", i)
+	// 	var ok bool
+	// 	command := i
 
-		// 生成数字签名
-		cmdBytes, _ := GetBytes(command)
-		sig := signature(cmdBytes)
+	// 	// 生成数字签名
+	// 	cmdBytes, _ := GetBytes(command)
+	// 	sig := signature(cmdBytes)
 
-		time.Sleep(50 * time.Millisecond)
+	// 	time.Sleep(50 * time.Millisecond)
 
-		index, _, ok = cfg.rafts[leader].Start(command, sig)
+	// 	index, _, ok = cfg.rafts[leader].Start(command, sig)
 
-		if ok {
-			fmt.Println("Index:", index)
-		} else {
-			fmt.Println("Failed.")
-		}
-	}
+	// 	if ok {
+	// 		fmt.Println("Index:", index)
+	// 	} else {
+	// 		fmt.Println("Failed.")
+	// 	}
+	// }
 
 	time.Sleep(2 * RaftElectionTimeout)
 
@@ -78,7 +76,7 @@ func TestStartCommand(t *testing.T) {
 
 	end := time.Now()
 	elapsed := end.Sub(start)
-	fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
+	fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed-2*RaftElectionTimeout)
 
 	// end := time.Now()
 	// elapsed := end.Sub(start)

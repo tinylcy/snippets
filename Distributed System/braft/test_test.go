@@ -26,21 +26,25 @@ const RaftElectionTimeout = 1000 * time.Millisecond
 
 // PASSED
 func TestStartCommand(t *testing.T) {
-	servers := 6
+	servers := 10
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
 
 	fmt.Printf("Initial election ...\n")
 
+	start := time.Now()
+
 	// is a leader elected?
 	leader := cfg.checkOneLeader()
 	fmt.Printf("leader: %d\n", leader)
 
+	time.Sleep(1000 * time.Millisecond)
+
 	var index int
 	var ok bool
 
-	start := time.Now()
-	var count = 1000
+	// start := time.Now()
+	var count = 100
 	for i := 0; i < count; i++ {
 		// fmt.Printf("i: %d\n", i)
 		command := i
@@ -75,6 +79,10 @@ func TestStartCommand(t *testing.T) {
 	end := time.Now()
 	elapsed := end.Sub(start)
 	fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
+
+	// end := time.Now()
+	// elapsed := end.Sub(start)
+	// fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed)
 
 }
 

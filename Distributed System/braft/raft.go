@@ -51,7 +51,7 @@ const (
 	LEADER                  // value --> 2
 )
 
-const quorum = 13
+const quorum = 19
 
 const HEARTBEAT_TIME int = 50
 
@@ -452,7 +452,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	rf.lock()
 	defer rf.unLock()
 	if !args.IsHeartbeat {
-		fmt.Printf("AppendEntries - server: %d, entry: %v\n", rf.me, args.LogEntry)
+		// fmt.Printf("AppendEntries - server: %d, entry: %v\n", rf.me, args.LogEntry)
 	}
 
 	if args.Term < rf.currentTerm {
@@ -592,6 +592,17 @@ func (rf *Raft) Start(command interface{}, sig []byte) (int, int, bool) {
 		rf.logs = append(rf.logs, entry)
 		// fmt.Printf("Start - Log entry: %v\n", entry)
 
+		for i := range rf.peers {
+			if i != rf.me && rf.status != CANDIDATE {
+				appendEntriesCommitArgs := AppendEntriesCommitArgs{Term: rf.currentTerm, PeerId: rf.me, EntryIndex: entry.Index, EntryTerm: entry.Term}
+				appendEntriesCommitReply := AppendEntriesCommitReply{}
+				go func(server int) {
+					rf.sendAppendEntriesCommit(server, appendEntriesCommitArgs, &appendEntriesCommitReply)
+					// fmt.Printf("Server [%d] wants to send append entries commit[index: %d] to server [%d]\n", rf.me, appendEntriesCommitArgs.EntryIndex, server)
+				}(i)
+			}
+		}
+
 		rf.persist()
 	} else {
 		isLeader = false
@@ -667,6 +678,7 @@ func broadcastAppendEntries(rf *Raft) {
 				appendEntriesArgs.IsHeartbeat = true
 			}
 
+			// fmt.Printf("PrevLogIndex: %d, len(rf.logs): %d\n", nextIndex-1, len(rf.logs))
 			appendEntriesArgs.PrevLogIndex = nextIndex - 1
 			appendEntriesArgs.PrevLogTerm = rf.logs[appendEntriesArgs.PrevLogIndex].Term
 
@@ -680,7 +692,9 @@ func broadcastAppendEntries(rf *Raft) {
 						rf.nextIndex[server] = rf.nextIndex[server] + 1
 					}
 				} else {
-					rf.nextIndex[server] = rf.nextIndex[server] - 1
+					if rf.nextIndex[server] > 1 {
+						rf.nextIndex[server] = rf.nextIndex[server] - 1
+					}
 				}
 			}(i)
 		}

@@ -11,6 +11,7 @@ package raft
 import (
 	// "encoding/binary"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -23,12 +24,21 @@ import (
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
 const RaftElectionTimeout = 1000 * time.Millisecond
+const CommandBreak = 50 * time.Millisecond
 
 // PASSED
 func TestStartCommand(t *testing.T) {
-	servers := 21
+	servers := 29
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
+
+	var filename = "./data"
+
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
 
 	fmt.Printf("Initial election ...\n")
 
@@ -41,7 +51,7 @@ func TestStartCommand(t *testing.T) {
 
 	var index int
 
-	var count = 10
+	var count int = 100
 	for i := 0; i < count; i++ {
 		// fmt.Printf("i: %d\n", i)
 		var ok bool
@@ -51,7 +61,7 @@ func TestStartCommand(t *testing.T) {
 		cmdBytes, _ := GetBytes(command)
 		sig := signature(cmdBytes)
 
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(CommandBreak)
 
 		index, _, ok = cfg.rafts[leader].Start(command, sig)
 
@@ -76,7 +86,11 @@ func TestStartCommand(t *testing.T) {
 
 	end := time.Now()
 	elapsed := end.Sub(start)
-	fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed-2*RaftElectionTimeout)
+	timeused := fmt.Sprintf("%v\n", elapsed-2*RaftElectionTimeout-100*CommandBreak)
+	if _, err := f.WriteString(timeused); err != nil {
+		panic(err)
+	}
+	//fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed-2*RaftElectionTimeout-100*CommandBreak)
 
 	// end := time.Now()
 	// elapsed := end.Sub(start)

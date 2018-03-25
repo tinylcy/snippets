@@ -78,12 +78,13 @@ type Raft struct {
 	currentTerm int
 	votedFor    int
 
-	status       Status
-	beLeader     chan bool
-	timeToCommit chan bool
-	grantVote    chan bool
-	getHeartBeat chan bool
-	getCommit    chan bool
+	status                 Status
+	beLeader               chan bool
+	timeToCommit           chan bool
+	grantVote              chan bool
+	getHeartBeat           chan bool
+	getCommit              chan bool
+	getAppendEntriesCommit chan bool
 
 	applyCh   chan ApplyMsg
 	voteCount int
@@ -486,7 +487,20 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		rf.logs = append(rf.logs, args.LogEntry)
 		reply.Success = true
 		reply.Term = args.Term
-		broadcastAppendEntriesCommit(rf, args.LogEntry.Index, args.LogEntry.Term)
+
+		// fmt.Printf("Server [%d] peers length: %d\n", rf.me, len(rf.peers))
+		// broadcastAppendEntriesCommit(rf, args.LogEntry.Index, args.LogEntry.Term)
+		for i := range rf.peers {
+			if i != rf.me && rf.status != CANDIDATE {
+				appendEntriesCommitArgs := AppendEntriesCommitArgs{Term: rf.currentTerm, PeerId: rf.me, EntryIndex: args.LogEntry.Index, EntryTerm: args.LogEntry.Term}
+				appendEntriesCommitReply := AppendEntriesCommitReply{}
+				go func(server int) {
+					rf.sendAppendEntriesCommit(server, appendEntriesCommitArgs, &appendEntriesCommitReply)
+					// fmt.Printf("Server [%d] wants to send append entries commit[index: %d] to server [%d]\n", rf.me, appendEntriesCommitArgs.EntryIndex, server)
+				}(i)
+			}
+		}
+
 	} else {
 		reply.Success = false
 		reply.Term = args.Term
@@ -495,9 +509,6 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 }
 
 func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	if !args.IsHeartbeat {
-		// fmt.Printf("sendAppendEntries - args: PrevLogIndex: %d, PrevLogTerm: %d, entry: %v\n", args.PrevLogIndex, args.PrevLogTerm, args.LogEntry)
-	}
 	// 发送 RPC 请求。
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	rf.lock()
@@ -539,7 +550,7 @@ func (rf *Raft) AppendEntriesCommit(args AppendEntriesCommitArgs, reply *AppendE
 	rf.lock()
 	defer rf.unLock()
 
-	// fmt.Printf("AppendEntriesCommit - me: %d, sender: %d\n", rf.me, args.PeerId)
+	// fmt.Printf("AppendEntriesCommit - me: %d, index: %d, sender: %d\n", rf.me, args.EntryIndex, args.PeerId)
 
 	key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex}
 	_, ok := rf.m[key]
@@ -549,17 +560,7 @@ func (rf *Raft) AppendEntriesCommit(args AppendEntriesCommitArgs, reply *AppendE
 		rf.m[key] = 1
 	}
 
-	// for i := len(rf.logs) - 1; i >= 0; i-- {
-	// 	log := rf.logs[i]
-	// 	k := AppendEntriesCommitKey{Term: log.Term, Index: log.Index}
-	// 	if rf.m[k] >= quorum {
-	// 		rf.commitIndex = k.Index
-	// 		rf.timeToCommit <- true
-	// 		break
-	// 	}
-	// }
-
-	if rf.m[key] >= quorum {
+	if rf.m[key] >= quorum && key.Index > rf.commitIndex {
 		rf.commitIndex = key.Index
 		rf.timeToCommit <- true
 	}
@@ -569,8 +570,6 @@ func (rf *Raft) AppendEntriesCommit(args AppendEntriesCommitArgs, reply *AppendE
 
 func (rf *Raft) sendAppendEntriesCommit(server int, args AppendEntriesCommitArgs, reply *AppendEntriesCommitReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntriesCommit", args, reply)
-	rf.lock()
-	defer rf.unLock()
 
 	// 如果 RPC 请求失败，直接返回。
 	if !ok {
@@ -592,9 +591,6 @@ func (rf *Raft) Start(command interface{}, sig []byte) (int, int, bool) {
 		entry := Entry{index, rf.currentTerm, command, sig}
 		rf.logs = append(rf.logs, entry)
 		// fmt.Printf("Start - Log entry: %v\n", entry)
-
-		// Leader 在将日志项添加到日志列表后，向其他节点广播 AppendEntriesCommit 消息。
-		broadcastAppendEntriesCommit(rf, index, rf.currentTerm)
 
 		rf.persist()
 	} else {
@@ -721,6 +717,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.grantVote = make(chan bool, 1)
 	rf.getHeartBeat = make(chan bool, 1)
 	rf.getCommit = make(chan bool, 1)
+	rf.getAppendEntriesCommit = make(chan bool, 1)
 
 	rf.m = make(map[AppendEntriesCommitKey]int)
 
@@ -802,6 +799,15 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 			}
 		}
 	}(rf)
+
+	// go func(rf *Raft) {
+	// 	for {
+	// 		select {
+	// 		case <-rf.getAppendEntriesCommit:
+	// 			fmt.Println("...")
+	// 		}
+	// 	}
+	// }()
 
 	return rf
 }

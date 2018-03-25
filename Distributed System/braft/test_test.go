@@ -41,26 +41,26 @@ func TestStartCommand(t *testing.T) {
 
 	var index int
 
-	var count = 1
-	// for i := 0; i < count; i++ {
-	// 	// fmt.Printf("i: %d\n", i)
-	// 	var ok bool
-	// 	command := i
+	var count = 10
+	for i := 0; i < count; i++ {
+		// fmt.Printf("i: %d\n", i)
+		var ok bool
+		command := i
 
-	// 	// 生成数字签名
-	// 	cmdBytes, _ := GetBytes(command)
-	// 	sig := signature(cmdBytes)
+		// 生成数字签名
+		cmdBytes, _ := GetBytes(command)
+		sig := signature(cmdBytes)
 
-	// 	time.Sleep(50 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 
-	// 	index, _, ok = cfg.rafts[leader].Start(command, sig)
+		index, _, ok = cfg.rafts[leader].Start(command, sig)
 
-	// 	if ok {
-	// 		fmt.Println("Index:", index)
-	// 	} else {
-	// 		fmt.Println("Failed.")
-	// 	}
-	// }
+		if ok {
+			fmt.Println("Index:", index)
+		} else {
+			fmt.Println("Failed.")
+		}
+	}
 
 	time.Sleep(2 * RaftElectionTimeout)
 

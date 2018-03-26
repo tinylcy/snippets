@@ -28,7 +28,8 @@ const CommandBreak = 50 * time.Millisecond
 
 // PASSED
 func TestStartCommand(t *testing.T) {
-	servers := 29
+	start := time.Now()
+	servers := 30
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
 
@@ -45,51 +46,59 @@ func TestStartCommand(t *testing.T) {
 	leader := cfg.checkOneLeader()
 	fmt.Printf("leader: %d\n", leader)
 
-	time.Sleep(2000 * time.Millisecond)
-
-	start := time.Now()
-
-	var index int
-
-	var count int = 100
-	for i := 0; i < count; i++ {
-		// fmt.Printf("i: %d\n", i)
-		var ok bool
-		command := i
-
-		// 生成数字签名
-		cmdBytes, _ := GetBytes(command)
-		sig := signature(cmdBytes)
-
-		time.Sleep(CommandBreak)
-
-		index, _, ok = cfg.rafts[leader].Start(command, sig)
-
-		if ok {
-			fmt.Println("Index:", index)
-		} else {
-			fmt.Println("Failed.")
-		}
-	}
-
-	time.Sleep(2 * RaftElectionTimeout)
-
-	n, _ := cfg.nCommitted(index)
-
-	for server := range cfg.rafts {
-		rf := *cfg.rafts[server]
-		fmt.Printf("server: %d, commitIndex: %d\n", rf.me, rf.commitIndex)
-		// PrintSortedMap(rf.m)
-	}
-
-	fmt.Println("Committed number:", n)
-
 	end := time.Now()
 	elapsed := end.Sub(start)
-	timeused := fmt.Sprintf("%v\n", elapsed-2*RaftElectionTimeout-100*CommandBreak)
+	timeused := fmt.Sprintf("%v\n", elapsed)
 	if _, err := f.WriteString(timeused); err != nil {
 		panic(err)
 	}
+
+	// time.Sleep(2000 * time.Millisecond)
+
+	// start := time.Now()
+
+	// var index int
+
+	// var count int = 1000
+	// for i := 0; i < count; i++ {
+	// 	// fmt.Printf("i: %d\n", i)
+	// 	var ok bool
+	// 	command := i
+
+	// 	// 生成数字签名
+	// 	cmdBytes, _ := GetBytes(command)
+	// 	sig := signature(cmdBytes)
+
+	// 	time.Sleep(CommandBreak)
+
+	// 	index, _, ok = cfg.rafts[leader].Start(command, sig)
+
+	// 	if ok {
+	// 		fmt.Println("Index:", index)
+	// 	} else {
+	// 		fmt.Println("Failed.")
+	// 	}
+	// }
+
+	// time.Sleep(2 * RaftElectionTimeout)
+
+	// n, _ := cfg.nCommitted(index)
+
+	// for server := range cfg.rafts {
+	// 	rf := *cfg.rafts[server]
+	// 	fmt.Printf("server: %d, commitIndex: %d\n", rf.me, rf.commitIndex)
+	// 	// PrintSortedMap(rf.m)
+	// }
+
+	// fmt.Println("Committed number:", n)
+
+	// end := time.Now()
+	// elapsed := end.Sub(start)
+	// timeused := fmt.Sprintf("%v\n", elapsed-2*RaftElectionTimeout-time.Duration(count)*CommandBreak)
+	// if _, err := f.WriteString(timeused); err != nil {
+	// 	panic(err)
+	// }
+
 	//fmt.Printf("command count: %d, time elapsed: %v\n", count, elapsed-2*RaftElectionTimeout-100*CommandBreak)
 
 	// end := time.Now()

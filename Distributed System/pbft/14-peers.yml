@@ -1,0 +1,185 @@
+# This compose file will start a cluster with 4 hyperledger peer nodes
+#  vp0: validating node as root
+#  vp1: validating node as peer
+#  vp2: validating node as peer
+#  vp3: validating node as peer
+# https://github.com/yeasy/docker-compose-files
+
+version: '2'
+
+services:
+  # validating node as the root
+  # vp0 will also be used for client interactive operations
+  # If you want to run fabric command on the host, then map 7051:7051 to host
+  # port, or use like `CORE_PEER_ADDRESS=172.17.0.2:7051` to specify peer addr.
+  vp0:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp0
+    environment:
+      - CORE_PEER_ID=vp0
+    ports:
+      - "7050:7050"
+      #- "7051:7051"
+
+  # validating node
+  vp1:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp1
+    environment:
+      - CORE_PEER_ID=vp1
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp2:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp2
+    environment:
+      - CORE_PEER_ID=vp2
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+
+  # validating node
+  vp3:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp3
+    environment:
+      - CORE_PEER_ID=vp3
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp4:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp4
+    environment:
+      - CORE_PEER_ID=vp4
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp5:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp5
+    environment:
+      - CORE_PEER_ID=vp5
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp6:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp6
+    environment:
+      - CORE_PEER_ID=vp6
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp7:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp7
+    environment:
+      - CORE_PEER_ID=vp7
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp8:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp8
+    environment:
+      - CORE_PEER_ID=vp8
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp9:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp9
+    environment:
+      - CORE_PEER_ID=vp9
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp10:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp10
+    environment:
+      - CORE_PEER_ID=vp10
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp11:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp11
+    environment:
+      - CORE_PEER_ID=vp11
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp12:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp12
+    environment:
+      - CORE_PEER_ID=vp12
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+
+  # validating node
+  vp13:
+    extends:
+      file: peer.yml
+      service: vp
+    hostname: vp13
+    environment:
+      - CORE_PEER_ID=vp13
+      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
+    links:
+      - vp0
+#networks:
+#  default:
+#    external:
+#      name: fabric_pbft

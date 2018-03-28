@@ -14,12 +14,12 @@ st = fig.suptitle("", fontsize="x-large")
 matplotlib.rcParams['xtick.direction'] = 'in'
 matplotlib.rcParams['ytick.direction'] = 'in'
 
-plt.plot(x, y1, '.-', label='BRaft')
+plt.plot(x, y1, 'r.-', label='BRaft')
 plt.xlabel('Number of nodes (.)')
 plt.ylabel('Time used (ms)')
 
-plt.plot(x, y2, '.-', label='Raft')
-plt.xlabel('Number of nodes (.)')
+plt.plot(x, y2, 'g.--', label='Raft')
+plt.xlabel('Number of client requests (.)')
 plt.ylabel('Time used (ms)')
 
 plt.legend()

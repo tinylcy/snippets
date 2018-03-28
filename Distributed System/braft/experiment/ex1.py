@@ -11,7 +11,7 @@ y2 = [502, 502, 501, 502, 501, 501, 502, 502, 502, 502, 504, 503, 503, 504, 503,
 
 # Set global title.
 fig = plt.figure()
-st = fig.suptitle("Leader election time used", fontsize="x-large")
+st = fig.suptitle("", fontsize="x-large")
 
 # Set tick direction.
 matplotlib.rcParams['xtick.direction'] = 'in'

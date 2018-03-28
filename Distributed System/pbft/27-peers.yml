@@ -337,54 +337,7 @@ services:
     links:
       - vp0
 
-  # validating node
-  vp27:
-    extends:
-      file: peer.yml
-      service: vp
-    hostname: vp27
-    environment:
-      - CORE_PEER_ID=vp27
-      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
-    links:
-      - vp0
 
-  # validating node
-  vp28:
-    extends:
-      file: peer.yml
-      service: vp
-    hostname: vp28
-    environment:
-      - CORE_PEER_ID=vp22
-      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
-    links:
-      - vp0
-  
-  # validating node
-  vp28:
-    extends:
-      file: peer.yml
-      service: vp
-    hostname: vp28
-    environment:
-      - CORE_PEER_ID=vp28
-      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
-    links:
-      - vp0
-
-  # validating node
-  vp29:
-    extends:
-      file: peer.yml
-      service: vp
-    hostname: vp29
-    environment:
-      - CORE_PEER_ID=vp29
-      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
-    links:
-      - vp0
-  
 #networks:
 #  default:
 #    external:

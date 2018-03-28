@@ -360,18 +360,6 @@ services:
       - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
     links:
       - vp0
-  
-  # validating node
-  vp28:
-    extends:
-      file: peer.yml
-      service: vp
-    hostname: vp28
-    environment:
-      - CORE_PEER_ID=vp28
-      - CORE_PEER_DISCOVERY_ROOTNODE=vp0:7051
-    links:
-      - vp0
 
   # validating node
   vp29:

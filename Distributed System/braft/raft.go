@@ -24,12 +24,16 @@ import (
 	"encoding/gob"
 	"fmt"
 	"math/rand"
+	"os"
 	// "strconv"
 	"sync"
 	"time"
 )
 
 // import "bytes"
+
+var AddedTime int64
+var CommittedTime int64
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -51,7 +55,7 @@ const (
 	LEADER                  // value --> 2
 )
 
-const quorum = 19
+const quorum = 4
 
 const HEARTBEAT_TIME int = 50
 
@@ -337,8 +341,8 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
-	//fmt.Printf("Server [%d] received RequestVote from [%d], currentTerm: %d, args.term: %d, prevLogTerm: %d, prevLogIndex: %d\n",
-	//	rf.me, args.CandidateId, rf.currentTerm, args.Term, args.LastCommittedLogTerm, args.LastCommittedLogIndex)
+	// fmt.Printf("Server [%d] received RequestVote from [%d], currentTerm: %d, args.term: %d, prevLogTerm: %d, prevLogIndex: %d\n",
+	// rf.me, args.CandidateId, rf.currentTerm, args.Term, args.LastCommittedLogTerm, args.LastCommittedLogIndex)
 
 	// 如果投票请求的 Term 比 currentTerm 小，直接返回拒绝投票。
 	if args.Term < rf.currentTerm {
@@ -376,7 +380,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	hash, _ := SHA256(rf.logs[rf.commitIndex])
 	if args.LastCommittedLogTerm == rf.logs[rf.commitIndex].Term &&
 		args.LastCommittedLogIndex == rf.commitIndex && args.LastCommittedLogHash == hash {
-		fmt.Printf("Server: %d vote for [%d]\n", rf.me, args.CandidateId)
+		// fmt.Printf("Server: %d vote for [%d]\n", rf.me, args.CandidateId)
 		reply.Term = args.Term
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
@@ -451,8 +455,15 @@ func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *Request
 func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.lock()
 	defer rf.unLock()
+
 	if !args.IsHeartbeat {
 		// fmt.Printf("AppendEntries - server: %d, entry: %v\n", rf.me, args.LogEntry)
+
+		if !verifySignature(GetBytes(args.LogEntry.Command), args.LogEntry.Signature) {
+			rf.status = CANDIDATE
+			fmt.Printf("FOLLOWER %d becomes CANDIDATE..., Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
+			return
+		}
 	}
 
 	if args.Term < rf.currentTerm {
@@ -485,6 +496,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 
 	if args.PrevLogIndex == lastLogIndex && args.PrevLogTerm == lastLogTerm {
 		rf.logs = append(rf.logs, args.LogEntry)
+		AddedTime = time.Now().UnixNano() / 1000000
 		reply.Success = true
 		reply.Term = args.Term
 
@@ -509,7 +521,11 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 }
 
 func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	// 发送 RPC 请求。
+	// For Byzantine Fault Tolerant Test
+	// if server == 5 {
+	// 	args.LogEntry.Command = 666
+	// }
+
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	rf.lock()
 	defer rf.unLock()
@@ -563,6 +579,9 @@ func (rf *Raft) AppendEntriesCommit(args AppendEntriesCommitArgs, reply *AppendE
 	if rf.m[key] >= quorum && key.Index > rf.commitIndex {
 		rf.commitIndex = key.Index
 		rf.timeToCommit <- true
+		CommittedTime = time.Now().UnixNano() / 1000000
+		rf.WriteLineToFile(fmt.Sprintf("%d\n", CommittedTime-AddedTime))
+		// fmt.Printf("Server [%d] Entry Committed Elapsed Time: %v\n", rf.me, CommittedTime-AddedTime)
 	}
 
 	reply.Success = true
@@ -590,7 +609,7 @@ func (rf *Raft) Start(command interface{}, sig []byte) (int, int, bool) {
 		index = rf.getLastEntry().Index + 1
 		entry := Entry{index, rf.currentTerm, command, sig}
 		rf.logs = append(rf.logs, entry)
-		// fmt.Printf("Start - Log entry: %v\n", entry)
+		AddedTime = time.Now().UnixNano() / 1000000
 
 		for i := range rf.peers {
 			if i != rf.me && rf.status != CANDIDATE {
@@ -604,6 +623,7 @@ func (rf *Raft) Start(command interface{}, sig []byte) (int, int, bool) {
 		}
 
 		rf.persist()
+
 	} else {
 		isLeader = false
 	}
@@ -632,6 +652,11 @@ func broadcastPreRequestVote(rf *Raft) {
 	defer rf.unLock()
 	for i := range rf.peers {
 		if i != rf.me && rf.status == CANDIDATE {
+			commitIndex := rf.commitIndex
+			if commitIndex >= len(rf.logs) {
+				rf.commitIndex = len(rf.logs) - 1
+			}
+			// fmt.Printf("Server [%d]: commitIndex: %d, log length: %d\n", rf.me, commitIndex, len(rf.logs))
 			args := PreRequestVoteArgs{Term: rf.currentTerm, CandidateId: rf.me, LastCommittedLogTerm: rf.logs[rf.commitIndex].Term, LastCommittedLogIndex: rf.commitIndex}
 			reply := PreRequestVoteReply{}
 			go func(server int) {
@@ -745,6 +770,17 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	rf.applyCh = applyCh
 
+	var filename = fmt.Sprintf("%d_data", rf.me)
+	//if _, err := os.Stat(filename); err == nil {
+	if err := os.Remove(filename); err != nil {
+		// panic(err)
+	}
+	// }
+
+	if _, err := os.Create(filename); err != nil {
+		panic(err)
+	}
+
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	go func(rf *Raft) {
@@ -755,7 +791,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 				case <-time.After(getRandomExpireTime()):
 					rf.lock()
 					rf.votedFor = -1
-					fmt.Printf("Server [%d] Timeout.....\n", rf.me)
+					fmt.Printf("Server [%d] Timeout....., Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
 
 					now := time.Now()
 					fmt.Printf("Server [%d] heartbeat gap: %v\n", rf.me, now.Sub(rf.lastHeartbeat))
@@ -785,7 +821,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 				case <-rf.beLeader:
 					rf.lock()
 					rf.status = LEADER
-					fmt.Printf("Server %d becomes leader.\n", rf.me)
+					fmt.Printf("Server [%d] becomes LEADER... Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
 					rf.nextIndex = make([]int, len(rf.peers))
 
 					for i := 0; i < len(rf.peers); i++ {
@@ -849,6 +885,7 @@ func (rf *Raft) applyCommand(entry Entry) {
 	applyCh.Command = entry.Command
 	rf.applyCh <- applyCh
 	rf.lastApplied++
+	rf.sendResponseToClient()
 }
 
 func (rf *Raft) getLastCommittedLog() Entry {
@@ -867,12 +904,33 @@ func (rf *Raft) containsLogEntry(term int, index int) bool {
 	return false
 }
 
-func GetBytes(key interface{}) ([]byte, error) {
+func GetBytes(key interface{}) []byte {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(key)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes()
+}
+
+func (rf *Raft) sendResponseToClient() {
+	// TODO
+	rf.ReceiveResponse(rf.me)
+}
+
+func (rf *Raft) WriteLineToFile(line string) {
+	var filename = fmt.Sprintf("%d_data", rf.me)
+
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	defer f.Close()
+
+	if _, err := f.WriteString(line); err != nil {
+		panic(err)
+	}
+
 }

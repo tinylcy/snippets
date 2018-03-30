@@ -6,10 +6,7 @@ import (
 )
 
 func SHA256(elem interface{}) (string, error) {
-	buf, err := GetBytes(elem)
-	if err != nil {
-		return "", err
-	}
+	buf := GetBytes(elem)
 
 	sum := sha256.Sum256(buf)
 	ret := fmt.Sprintf("%x", sum)

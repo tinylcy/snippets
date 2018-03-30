@@ -404,7 +404,7 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			}
 			cfg.mu.Unlock()
 			if rf != nil {
-				cmdBytes, _ := GetBytes(cmd)
+				cmdBytes := GetBytes(cmd)
 				sig := signature(cmdBytes)
 				index1, _, ok := rf.Start(cmd, sig)
 				// fmt.Printf("index1: %d, ok: %v\n", index1, ok)

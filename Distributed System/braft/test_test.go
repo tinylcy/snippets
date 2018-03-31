@@ -34,7 +34,7 @@ func (rf *Raft) ReceiveResponse(response interface{}) {
 
 // PASSED
 func TestStartCommand(t *testing.T) {
-	servers := 6
+	servers := 10
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
 
@@ -57,7 +57,7 @@ func TestStartCommand(t *testing.T) {
 
 	var index int
 
-	var count int = 100
+	var count int = 1
 	for i := 0; i < count; i++ {
 		// fmt.Printf("i: %d\n", i)
 		var ok bool

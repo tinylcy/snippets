@@ -55,7 +55,7 @@ const (
 	LEADER                  // value --> 2
 )
 
-const quorum = 4
+const quorum = 7
 
 const HEARTBEAT_TIME int = 50
 
@@ -273,6 +273,9 @@ func (rf *Raft) PreRequestVoteArgs(args PreRequestVoteArgs, reply *PreRequestVot
 	}
 
 	if args.Term > rf.currentTerm {
+		// if rf.status == LEADER {
+		// 	fmt.Printf("PreRequestVoteArgs - LEADER [%d] becomes FOLLOWER, Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
+		// }
 		rf.status = FOLLOWER
 		rf.votedFor = -1
 		rf.voteCount = 0
@@ -280,9 +283,13 @@ func (rf *Raft) PreRequestVoteArgs(args PreRequestVoteArgs, reply *PreRequestVot
 
 	rf.currentTerm = args.Term
 
+	commitIndex := rf.commitIndex
+	if commitIndex >= len(rf.logs) {
+		rf.commitIndex = len(rf.logs) - 1
+	}
 	commitTerm := rf.logs[rf.commitIndex].Term
 
-	if commitTerm == 0 || rf.commitIndex == 0 {
+	if rf.commitIndex == 0 || commitTerm == 0 {
 		reply.Success = true
 		reply.ReceiverId = rf.me
 		reply.ReceiverLastCommittedLogTerm = 0
@@ -290,8 +297,8 @@ func (rf *Raft) PreRequestVoteArgs(args PreRequestVoteArgs, reply *PreRequestVot
 		return
 	}
 
-	// fmt.Printf("server: %d, commitTerm: %d, commitIndex: %d args.Term: %d\n",
-	// rf.me, commitTerm, rf.commitIndex, args.Term)
+	//fmt.Printf("server: %d, commitTerm: %d, commitIndex: %d args.Term: %d\n",
+	//	rf.me, commitTerm, rf.commitIndex, args.Term)
 
 	if (args.LastCommittedLogTerm > rf.logs[rf.commitIndex].Term) ||
 		(args.LastCommittedLogTerm == rf.logs[rf.commitIndex].Term && args.LastCommittedLogIndex >= rf.commitIndex) {
@@ -326,6 +333,7 @@ func (rf *Raft) sendPreRquestVoteArgs(server int, args PreRequestVoteArgs, reply
 		requestVoteReply := RequestVoteReply{}
 
 		go func() {
+			// fmt.Printf("Server [%d] begin sendRequestVote: Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
 			rf.sendRequestVote(reply.ReceiverId, requestVoteArgs, &requestVoteReply)
 		}()
 		//}
@@ -341,8 +349,8 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	rf.lock()
 	defer rf.unLock()
 	defer rf.persist()
-	// fmt.Printf("Server [%d] received RequestVote from [%d], currentTerm: %d, args.term: %d, prevLogTerm: %d, prevLogIndex: %d\n",
-	// rf.me, args.CandidateId, rf.currentTerm, args.Term, args.LastCommittedLogTerm, args.LastCommittedLogIndex)
+	fmt.Printf("Server [%d] received RequestVote from [%d], currentTerm: %d, args.term: %d, LastCommittedLogTerm: %d, LastCommittedLogIndex: %d\n",
+		rf.me, args.CandidateId, rf.currentTerm, args.Term, args.LastCommittedLogTerm, args.LastCommittedLogIndex)
 
 	// 如果投票请求的 Term 比 currentTerm 小，直接返回拒绝投票。
 	if args.Term < rf.currentTerm {
@@ -461,6 +469,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 
 		if !verifySignature(GetBytes(args.LogEntry.Command), args.LogEntry.Signature) {
 			rf.status = CANDIDATE
+			rf.getHeartBeat <- true // Change status immediately
 			fmt.Printf("FOLLOWER %d becomes CANDIDATE..., Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
 			return
 		}
@@ -477,6 +486,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 
 	if args.Term > rf.currentTerm {
 		rf.status = FOLLOWER
+		fmt.Printf("AppendEntries - Server [%d] becomes FOLLOWER, Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
 		rf.votedFor = -1
 		rf.currentTerm = args.Term
 		reply.Term = args.Term
@@ -522,9 +532,9 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 
 func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	// For Byzantine Fault Tolerant Test
-	// if server == 5 {
-	// 	args.LogEntry.Command = 666
-	// }
+	if server == 5 {
+		args.LogEntry.Command = 666
+	}
 
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	rf.lock()
@@ -566,7 +576,7 @@ func (rf *Raft) AppendEntriesCommit(args AppendEntriesCommitArgs, reply *AppendE
 	rf.lock()
 	defer rf.unLock()
 
-	// fmt.Printf("AppendEntriesCommit - me: %d, index: %d, sender: %d\n", rf.me, args.EntryIndex, args.PeerId)
+	// fmt.Printf("AppendEntriesCommit - Server[%d], index: %d, sender: %d\n", rf.me, args.EntryIndex, args.PeerId)
 
 	key := AppendEntriesCommitKey{Term: args.EntryTerm, Index: args.EntryIndex}
 	_, ok := rf.m[key]
@@ -576,12 +586,16 @@ func (rf *Raft) AppendEntriesCommit(args AppendEntriesCommitArgs, reply *AppendE
 		rf.m[key] = 1
 	}
 
+	// fmt.Printf("Server [%d] rf.m[key]: %d\n", rf.me, rf.m[key])
+	// if rf.m[key] >= quorum {
+	// 	fmt.Printf("Server[%d], key.Index = %d, commitIndex = %d\n", rf.me, key.Index, rf.commitIndex)
+	// }
 	if rf.m[key] >= quorum && key.Index > rf.commitIndex {
 		rf.commitIndex = key.Index
+		// fmt.Printf("Server [%d]: Index %d Committed.\n", rf.me, key.Index)
 		rf.timeToCommit <- true
 		CommittedTime = time.Now().UnixNano() / 1000000
 		rf.WriteLineToFile(fmt.Sprintf("%d\n", CommittedTime-AddedTime))
-		// fmt.Printf("Server [%d] Entry Committed Elapsed Time: %v\n", rf.me, CommittedTime-AddedTime)
 	}
 
 	reply.Success = true
@@ -791,7 +805,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 				case <-time.After(getRandomExpireTime()):
 					rf.lock()
 					rf.votedFor = -1
-					fmt.Printf("Server [%d] Timeout....., Current Time: %v\n", rf.me, time.Now().UnixNano()/1000000)
+					fmt.Printf("Server [%d] Timeout....., Status: %v, Current Time: %v\n", rf.me, rf.status, time.Now().UnixNano()/1000000)
 
 					now := time.Now()
 					fmt.Printf("Server [%d] heartbeat gap: %v\n", rf.me, now.Sub(rf.lastHeartbeat))
